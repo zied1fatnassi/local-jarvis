@@ -8,6 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::StreamExt;
 use jarvis_audio::{Capture, PcmPlayer};
 use jarvis_core::config::Config;
 use jarvis_core::events::WakeEvent;
@@ -65,7 +66,7 @@ impl Orchestrator {
         tracing::info!(
             "jarvis online — skills: {:?}, ww: {}, stt: {}",
             self.skills.names(),
-            "stub",
+            if self.wake.is_enabled() { "openWakeWord (hey_jarvis)" } else { "disabled" },
             self.stt.is_available()
         );
 
@@ -134,6 +135,14 @@ impl Orchestrator {
         }
         if is_whisper_hallucination(&transcript) {
             tracing::info!("ignoring likely Whisper hallucination: {transcript}");
+            self.set_state(State::Idle);
+            return;
+        }
+        let lower = transcript.trim().to_lowercase();
+        let stripped = lower.strip_prefix("jarvis").unwrap_or(&lower).trim();
+        if stripped == "stop" || stripped == "cancel" || stripped == "quiet" || stripped == "shut up" {
+            tracing::info!("voice emergency stop requested");
+            self.player.stop();
             self.set_state(State::Idle);
             return;
         }
@@ -215,7 +224,8 @@ impl Orchestrator {
                     rx.recv()
                         .await
                         .map(|s| (Ok::<_, anyhow::Error>(s), rx))
-                });
+                })
+                .fuse();
                 crate::streaming::speak_stream(chunks, tts, player, cancel).await
             })
         };

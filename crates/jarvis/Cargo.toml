@@ -13,7 +13,7 @@ path = "src/main.rs"
 # Wire the real ML backends. Off by default so the workspace builds without a
 # C++/CUDA toolchain. Pick one of {llama, cuda} for the LLM. `cuda` implies
 # `llama` so the runtime path in runner.rs is enabled.
-default = []
+default = ["llama", "whisper"]
 llama = ["jarvis-llm/llama"]
 whisper = ["jarvis-stt/whisper"]
 embed = ["jarvis-memory/embed"]

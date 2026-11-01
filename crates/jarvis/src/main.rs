@@ -40,6 +40,8 @@ enum Command {
     Listen,
     /// Query the running daemon's state.
     Status,
+    /// Ask Jarvis a question or command via the running daemon.
+    Ask { prompt: String },
     /// Cancel any in-progress speech.
     Cancel,
     /// Print the resolved config file path.
@@ -105,6 +107,11 @@ async fn main() -> Result<()> {
         Command::Status => {
             let s = client::call_status().await?;
             println!("{s}");
+            Ok(())
+        }
+        Command::Ask { prompt } => {
+            let reply = client::call_ask(&prompt).await?;
+            println!("{reply}");
             Ok(())
         }
         Command::Cancel => client::call_cancel().await,
@@ -222,6 +229,19 @@ mod client {
     pub async fn call_status() -> Result<String> {
         let p = proxy().await?;
         let m = p.call_method("Status", &()).await.map_err(friendly)?;
+        let body: String = m.body().deserialize()?;
+        Ok(body)
+    }
+
+    pub async fn call_ask(prompt: &str) -> Result<String> {
+        let p = proxy().await?;
+        let m = tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            p.call_method("Ask", &(prompt,)),
+        )
+        .await
+        .map_err(|_| anyhow!("Jarvis took longer than 120s to respond."))?
+        .map_err(friendly)?;
         let body: String = m.body().deserialize()?;
         Ok(body)
     }

@@ -57,6 +57,7 @@ where
     let mut played = 0usize;
 
     let synth_stream = chunks
+        .fuse()
         .filter_map(|res| async move { res.ok() })
         .map(|chunk| {
             let tts = Arc::clone(&tts);

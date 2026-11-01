@@ -80,8 +80,9 @@ impl LlamaEngine {
         // Toujours forcer la valeur — le défaut de LlamaModelParams place 999
         // sur GPU dès qu'un backend CUDA est chargé, ce qui ignore une
         // demande CPU explicite (n_gpu_layers=0).
-        let model_params =
-            LlamaModelParams::default().with_n_gpu_layers(cfg.n_gpu_layers.max(0) as u32);
+        let model_params = LlamaModelParams::default()
+            .with_n_gpu_layers(cfg.n_gpu_layers.max(0) as u32)
+            .with_vocab_only(false);
 
         tracing::info!(
             "loading llama model from {:?} (n_gpu_layers={})",
@@ -119,8 +120,13 @@ impl LlmEngine for LlamaEngine {
         // Everything llama-cpp-2 is blocking & not Send. Build context + sampler
         // *inside* the worker thread.
         tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
-            let n_ctx = NonZeroU32::new(cfg.n_ctx).unwrap_or(NonZeroU32::new(4096).unwrap());
-            let n_batch = cfg.n_batch.max(512);
+            // Tokenize first so n_batch and n_ctx are sized to fit the entire prompt
+            let tokens: Vec<LlamaToken> = model.str_to_token(&prompt, AddBos::Never)?;
+            let token_count = tokens.len() as u32;
+            let n_batch = token_count.max(cfg.n_batch).max(4096);
+            let n_ctx_val = (token_count + (cfg.max_tokens as u32) + 256).max(cfg.n_ctx).max(8192);
+            let n_ctx = NonZeroU32::new(n_ctx_val).unwrap();
+
             let mut ctx_params = LlamaContextParams::default()
                 .with_n_ctx(Some(n_ctx))
                 .with_n_batch(n_batch)
@@ -131,10 +137,6 @@ impl LlmEngine for LlamaEngine {
                     .with_n_threads_batch(cfg.n_threads);
             }
             let mut ctx: LlamaContext = model.new_context(&backend, ctx_params)?;
-
-            // Tokenize the rendered ChatML prompt (no extra BOS — the template
-            // already contains the role markers).
-            let tokens: Vec<LlamaToken> = model.str_to_token(&prompt, AddBos::Never)?;
 
             let mut batch = LlamaBatch::new(tokens.len().max(1), 1);
             let last_idx = tokens.len() as i32 - 1;
@@ -196,8 +198,17 @@ impl LlmEngine for LlamaEngine {
         tokio::task::spawn_blocking(move || {
             let _hold = guard;
             let work = (|| -> anyhow::Result<()> {
-                let n_ctx = NonZeroU32::new(cfg.n_ctx).unwrap_or(NonZeroU32::new(4096).unwrap());
-                let mut ctx_params = LlamaContextParams::default().with_n_ctx(Some(n_ctx));
+                // Tokenize first so n_batch and n_ctx are sized to fit the entire prompt
+                let tokens: Vec<LlamaToken> = model.str_to_token(&prompt, AddBos::Never)?;
+                let token_count = tokens.len() as u32;
+                let n_batch = token_count.max(cfg.n_batch).max(4096);
+                let n_ctx_val = (token_count + (cfg.max_tokens as u32) + 256).max(cfg.n_ctx).max(8192);
+                let n_ctx = NonZeroU32::new(n_ctx_val).unwrap();
+
+                let mut ctx_params = LlamaContextParams::default()
+                    .with_n_ctx(Some(n_ctx))
+                    .with_n_batch(n_batch)
+                    .with_n_ubatch(n_batch);
                 if cfg.n_threads > 0 {
                     ctx_params = ctx_params
                         .with_n_threads(cfg.n_threads)
@@ -205,7 +216,6 @@ impl LlmEngine for LlamaEngine {
                 }
                 let mut ctx: LlamaContext = model.new_context(&backend, ctx_params)?;
 
-                let tokens: Vec<LlamaToken> = model.str_to_token(&prompt, AddBos::Never)?;
                 let mut batch = LlamaBatch::new(tokens.len().max(1), 1);
                 let last_idx = tokens.len() as i32 - 1;
                 for (i, &tok) in tokens.iter().enumerate() {
@@ -245,7 +255,8 @@ impl LlmEngine for LlamaEngine {
 
         let stream = futures::stream::unfold(rx, |mut rx| async move {
             rx.recv().await.map(|item| (item, rx))
-        });
+        })
+        .fuse();
         Ok(stream.boxed())
     }
 }

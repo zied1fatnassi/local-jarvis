@@ -124,6 +124,16 @@ pub struct LlmCfg {
     /// the chat history before each LLM call. Prevents the rendered ChatML
     /// prompt from outgrowing `n_batch` after a long session.
     pub history_keep_pairs: usize,
+    /// LLM engine selection: "local" (default), "cloud", or "hybrid".
+    pub engine: String,
+    /// Cloud provider: "gemini" (default) or "openai".
+    pub cloud_provider: String,
+    /// Cloud model identifier (e.g. "gemini-2.0-flash").
+    pub cloud_model: String,
+    /// Cloud API key (falls back to GEMINI_API_KEY or OPENAI_API_KEY env vars).
+    pub cloud_api_key: Option<String>,
+    /// Optional custom cloud API endpoint URL.
+    pub cloud_endpoint: Option<String>,
 }
 
 impl Default for LlmCfg {
@@ -138,6 +148,11 @@ impl Default for LlmCfg {
             system_prompt: default_system_prompt(),
             max_tool_iterations: 8,
             history_keep_pairs: 8,
+            engine: "local".to_string(),
+            cloud_provider: "gemini".to_string(),
+            cloud_model: "gemini-2.0-flash".to_string(),
+            cloud_api_key: None,
+            cloud_endpoint: None,
         }
     }
 }

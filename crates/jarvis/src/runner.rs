@@ -162,7 +162,7 @@ pub async fn run() -> Result<()> {
     // global et fait segfault llama au moment de l'alloc des tenseurs.
     // Initialiser llama en premier garantit que libggml.so dynamique gagne
     // la résolution de symboles, et whisper utilise ensuite sa copie privée.
-    let llm: Arc<dyn jarvis_llm::engine::LlmEngine> = {
+    let local_llm: Arc<dyn jarvis_llm::engine::LlmEngine> = {
         #[cfg(feature = "llama")]
         {
             if config.llm.model.is_file() {
@@ -196,6 +196,31 @@ pub async fn run() -> Result<()> {
         #[cfg(not(feature = "llama"))]
         {
             Arc::new(StubEngine::new())
+        }
+    };
+
+    let cloud_llm: Option<Arc<dyn jarvis_llm::engine::LlmEngine>> = {
+        let cloud_cfg = jarvis_llm::CloudConfig {
+            provider: config.llm.cloud_provider.clone(),
+            model: config.llm.cloud_model.clone(),
+            api_key: config.llm.cloud_api_key.clone(),
+            endpoint: config.llm.cloud_endpoint.clone(),
+        };
+        Some(Arc::new(jarvis_llm::CloudEngine::new(cloud_cfg)) as Arc<dyn jarvis_llm::engine::LlmEngine>)
+    };
+
+    let llm: Arc<dyn jarvis_llm::engine::LlmEngine> = match config.llm.engine.to_lowercase().as_str() {
+        "cloud" => {
+            tracing::info!("LLM engine: cloud ({})", config.llm.cloud_model);
+            cloud_llm.unwrap_or(local_llm)
+        }
+        "hybrid" => {
+            tracing::info!("LLM engine: hybrid (local + cloud fallback)");
+            Arc::new(jarvis_llm::HybridEngine::new(local_llm, cloud_llm, false))
+        }
+        _ => {
+            tracing::info!("LLM engine: local ({})", config.llm.model.display());
+            Arc::new(jarvis_llm::HybridEngine::new(local_llm, cloud_llm, false))
         }
     };
 

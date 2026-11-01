@@ -9,6 +9,7 @@
 //!   behind a feature flag once the GGUF is available.
 
 pub mod chat;
+pub mod cloud;
 pub mod engine;
 pub mod grammar;
 #[cfg(feature = "llama")]
@@ -18,6 +19,7 @@ pub mod streaming;
 pub mod tools;
 
 pub use chat::{format_system_with_tools, ChatHistory, ChatMessage, Role};
+pub use cloud::{CloudConfig, CloudEngine, HybridEngine};
 pub use engine::{LlmEngine, ScriptedStreamEngine, StubEngine};
 pub use grammar::ToolSpec;
 #[cfg(feature = "llama")]

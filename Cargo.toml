@@ -57,7 +57,7 @@ hound = "3"
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-rustls", "api-24"] }
 ndarray = "0.17"
 whisper-rs = "0.16"
-llama-cpp-2 = "0.1"
+llama-cpp-2 = "=0.1.146"
 
 # TTS phonemization
 espeakng-sys = "0.1"

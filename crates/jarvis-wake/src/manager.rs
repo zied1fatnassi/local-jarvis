@@ -16,6 +16,7 @@ pub struct WakeManager {
     paused: Arc<AtomicBool>,
     task: Option<JoinHandle<()>>,
     rx: mpsc::Receiver<WakeEvent>,
+    has_wakeword: bool,
 }
 
 /// Decide whether the openWakeWord detector can safely consume frames at the
@@ -64,6 +65,8 @@ impl WakeManager {
             None
         };
 
+        let has_wakeword = ww_det.as_ref().map(|d| d.is_enabled()).unwrap_or(false);
+
         let task = tokio::spawn(async move {
             while let Ok(frame) = rx_audio.recv().await {
                 if paused_t.load(Ordering::Acquire) {
@@ -96,7 +99,12 @@ impl WakeManager {
             paused,
             task: Some(task),
             rx,
+            has_wakeword,
         }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.has_wakeword
     }
 
     pub fn pause(&self) {
